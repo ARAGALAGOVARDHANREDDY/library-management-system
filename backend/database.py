@@ -1,26 +1,36 @@
-
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, URL
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import URL, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Load .env from the same folder as this file
+
+# Load .env from the project folder
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env", override=False)
 
-# Read MySQL credentials
-DB_HOST = os.getenv("DB_HOST", "localhost")
+
+# Local MySQL configuration
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1").strip()
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
-DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME = os.getenv("DB_NAME", "library_db")
+DB_USER = os.getenv("DB_USER", "root").strip()
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME = os.getenv("DB_NAME", "library_db").strip()
 
-if not DB_PASSWORD:
-    raise ValueError("MySQL password is missing. Check your .env file.")
 
-# Build database URL safely
+# Validate configuration
+if not DB_HOST:
+    raise ValueError("DB_HOST is missing in .env")
+
+if not DB_USER:
+    raise ValueError("DB_USER is missing in .env")
+
+if not DB_NAME:
+    raise ValueError("DB_NAME is missing in .env")
+
+
+# Create MySQL connection URL
 DATABASE_URL = URL.create(
     drivername="mysql+pymysql",
     username=DB_USER,
@@ -28,14 +38,20 @@ DATABASE_URL = URL.create(
     host=DB_HOST,
     port=DB_PORT,
     database=DB_NAME,
-    query={"charset": "utf8mb4"}
+    query={
+        "charset": "utf8mb4"
+    }
 )
+
 
 # Create database engine
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    echo=False
 )
+
 
 # Create database sessions
 SessionLocal = sessionmaker(
@@ -44,14 +60,18 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-# Base class for SQLAlchemy models
+
+# SQLAlchemy Base
 Base = declarative_base()
 
 
-# FastAPI database dependency
+# Database dependency for FastAPI
 def get_db():
+
     db = SessionLocal()
+
     try:
         yield db
+
     finally:
         db.close()
