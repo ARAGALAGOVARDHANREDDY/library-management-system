@@ -1,20 +1,40 @@
 
+import os
 import requests
-
-API_BASE_URL = "http://127.0.0.1:8000"
+import streamlit as st
 
 
 class APIError(Exception):
     pass
 
 
+def get_api_base_url():
+    """Get FastAPI URL from Streamlit Secrets or environment."""
+
+    try:
+        url = st.secrets.get("API_BASE_URL", "")
+    except Exception:
+        url = ""
+
+    if not url:
+        url = os.getenv("API_BASE_URL", "")
+
+    if not url:
+        raise APIError(
+            "Backend URL is not configured. "
+            "Please add API_BASE_URL in Streamlit Secrets."
+        )
+
+    return url.rstrip("/")
+
+
 def api_request(method, endpoint, token=None, data=None, params=None):
 
-    url = f"{API_BASE_URL}{endpoint}"
+    base_url = get_api_base_url()
+    url = f"{base_url}{endpoint}"
 
     headers = {}
 
-    # Attach JWT token when user is logged in
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -25,13 +45,15 @@ def api_request(method, endpoint, token=None, data=None, params=None):
             headers=headers,
             json=data,
             params=params,
-            timeout=15
+            timeout=20
         )
 
         if response.status_code >= 400:
             try:
                 error = response.json()
-                message = error.get("detail", "API request failed")
+                message = error.get(
+                    "detail", "API request failed"
+                )
             except ValueError:
                 message = response.text or "API request failed"
 
@@ -40,13 +62,17 @@ def api_request(method, endpoint, token=None, data=None, params=None):
             )
 
         if response.content:
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                raise APIError("Invalid response received from backend.")
 
         return {}
 
     except requests.exceptions.ConnectionError:
         raise APIError(
-            "Cannot connect to FastAPI. Start your backend first."
+            "Cannot connect to FastAPI backend. "
+            "Check whether your backend is deployed and running."
         )
 
     except requests.exceptions.Timeout:
